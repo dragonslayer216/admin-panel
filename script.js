@@ -1,119 +1,181 @@
-let lastDeletedUserId = null;
+const users = [
+  { id: 1, name: 'Alice Johnson', email: 'alice@nova.io', role: 'Admin', status: 'active' },
+  { id: 2, name: 'Bob Smith', email: 'bob@nova.io', role: 'Manager', status: 'pending' },
+  { id: 3, name: 'Carol Lee', email: 'carol@nova.io', role: 'Editor', status: 'inactive' },
+  { id: 4, name: 'David Kim', email: 'david@nova.io', role: 'User', status: 'active' }
+];
 
-// Keyboard Shortcuts
-document.addEventListener('keydown', (e) => {
-    if (e.altKey) {
-        if (e.key === 'd' || e.key === 'D') {
-            e.preventDefault();
-            navigateToPage('dashboard');
-        } else if (e.key === 'u' || e.key === 'U') {
-            e.preventDefault();
-            navigateToPage('users');
-        } else if (e.key === 's' || e.key === 'S') {
-            e.preventDefault();
-            navigateToPage('settings');
-        } else if (e.key === 'h' || e.key === 'H') {
-            e.preventDefault();
-            navigateToPage('help');
-        }
-    } else if (e.key === 'Escape') {
-        e.preventDefault();
-        closeUserModal();
-    } else if (e.ctrlKey && (e.key === 's' || e.key === 'S')) {
-        e.preventDefault();
-        const form = document.getElementById('user-form');
-        if (userModal.style.display === 'block') {
-            form.dispatchEvent(new Event('submit'));
-        }
-    } else if (e.ctrlKey && (e.key === 'n' || e.key === 'N')) {
-        const currentPage = document.querySelector('.page:not(.hidden)');
-        if (currentPage && currentPage.id === 'users') {
-            e.preventDefault();
-            openAddUserModal();
-        }
-    } else if (e.key === 'Delete') {
-        if (lastDeletedUserId !== null) {
-            e.preventDefault();
-            deleteUser(lastDeletedUserId);
-        }
+const userTableBody = document.getElementById('user-table-body');
+const recentUsersBody = document.getElementById('recent-users-body');
+const searchInput = document.getElementById('global-search');
+const modal = document.getElementById('user-modal');
+const modalTitle = document.getElementById('modal-title');
+const userForm = document.getElementById('user-form');
+const addUserBtn = document.getElementById('add-user-btn');
+const closeModalBtn = document.getElementById('close-modal');
+const cancelModalBtn = document.getElementById('cancel-modal');
+
+let editingUserId = null;
+
+function getStatusClass(status) {
+  if (status === 'active') return 'success';
+  if (status === 'pending') return 'pending';
+  return 'danger';
+}
+
+function renderStatus(status) {
+  const className = getStatusClass(status);
+  return `<span class="status ${className}">${status.charAt(0).toUpperCase() + status.slice(1)}</span>`;
+}
+
+function renderRecentUsers(filteredUsers = users) {
+  const rows = filteredUsers.slice(0, 3).map((user) => `
+    <tr>
+      <td>${user.name}</td>
+      <td>${user.role}</td>
+      <td>${renderStatus(user.status)}</td>
+      <td>
+        <div class="action-row">
+          <button class="btn btn-mini success" type="button" data-edit="${user.id}">Edit</button>
+          <button class="btn btn-mini danger" type="button" data-delete="${user.id}">Delete</button>
+        </div>
+      </td>
+    </tr>
+  `).join('');
+
+  recentUsersBody.innerHTML = rows || '<tr><td colspan="4">No users found.</td></tr>';
+}
+
+function renderUsers(filteredUsers = users) {
+  const rows = filteredUsers.map((user) => `
+    <tr>
+      <td>${user.name}</td>
+      <td>${user.email}</td>
+      <td>${user.role}</td>
+      <td>${renderStatus(user.status)}</td>
+      <td>
+        <div class="action-row">
+          <button class="btn btn-mini success" type="button" data-edit="${user.id}">Edit</button>
+          <button class="btn btn-mini danger" type="button" data-delete="${user.id}">Delete</button>
+        </div>
+      </td>
+    </tr>
+  `).join('');
+
+  userTableBody.innerHTML = rows || '<tr><td colspan="5">No users found.</td></tr>';
+}
+
+function renderAll() {
+  const query = searchInput.value.trim().toLowerCase();
+  const filteredUsers = users.filter((user) => {
+    const haystack = `${user.name} ${user.email} ${user.role} ${user.status}`.toLowerCase();
+    return haystack.includes(query);
+  });
+
+  renderRecentUsers(filteredUsers);
+  renderUsers(filteredUsers);
+}
+
+function openModal(mode, user = null) {
+  editingUserId = user ? user.id : null;
+  modalTitle.textContent = mode === 'edit' ? 'Edit user' : 'Add user';
+
+  if (user) {
+    document.getElementById('user-name').value = user.name;
+    document.getElementById('user-email').value = user.email;
+    document.getElementById('user-role').value = user.role;
+    document.getElementById('user-status').value = user.status;
+  } else {
+    userForm.reset();
+    document.getElementById('user-role').value = 'User';
+    document.getElementById('user-status').value = 'active';
+  }
+
+  modal.classList.remove('hidden');
+  modal.setAttribute('aria-hidden', 'false');
+}
+
+function closeModal() {
+  modal.classList.add('hidden');
+  modal.setAttribute('aria-hidden', 'true');
+  editingUserId = null;
+  userForm.reset();
+}
+
+function handleAddOrUpdateUser(event) {
+  event.preventDefault();
+
+  const name = document.getElementById('user-name').value.trim();
+  const email = document.getElementById('user-email').value.trim();
+  const role = document.getElementById('user-role').value;
+  const status = document.getElementById('user-status').value;
+
+  if (!name || !email) return;
+
+  if (editingUserId !== null) {
+    const user = users.find((item) => item.id === editingUserId);
+    if (user) {
+      user.name = name;
+      user.email = email;
+      user.role = role;
+      user.status = status;
     }
+  } else {
+    const newId = users.length ? Math.max(...users.map((u) => u.id)) + 1 : 1;
+    users.push({ id: newId, name, email, role, status });
+  }
+
+  renderAll();
+  closeModal();
+}
+
+function handleDeleteUser(id) {
+  const index = users.findIndex((user) => user.id === id);
+  if (index >= 0) {
+    users.splice(index, 1);
+    renderAll();
+  }
+}
+
+searchInput.addEventListener('input', renderAll);
+addUserBtn.addEventListener('click', () => openModal('add'));
+closeModalBtn.addEventListener('click', closeModal);
+cancelModalBtn.addEventListener('click', closeModal);
+userForm.addEventListener('submit', handleAddOrUpdateUser);
+
+modal.addEventListener('click', (event) => {
+  if (event.target === modal) closeModal();
 });
 
-function navigateToPage(page) {
-    const link = document.querySelector(`[data-page="${page}"]`);
-    if (link) {
-        link.click();
-    }
-}
+document.addEventListener('click', (event) => {
+  const editButton = event.target.closest('[data-edit]');
+  if (editButton) {
+    const user = users.find((entry) => entry.id === Number(editButton.dataset.edit));
+    if (user) openModal('edit', user);
+  }
 
-// Navigation
-document.querySelectorAll('.nav-link').forEach(link => {
-    link.addEventListener('click', (e) => {
-        e.preventDefault();
-        const page = e.target.dataset.page;
-        
-        if (page === 'logout') {
-            alert('Logging out...');
-            return;
-        }
-
-        document.querySelectorAll('.page').forEach(p => p.classList.add('hidden'));
-        document.getElementById(page).classList.remove('hidden');
-        
-        document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
-        e.target.classList.add('active');
-
-        const pageTitle = page.charAt(0).toUpperCase() + page.slice(1);
-        document.getElementById('page-title').textContent = pageTitle;
-    });
+  const deleteButton = event.target.closest('[data-delete]');
+  if (deleteButton) {
+    handleDeleteUser(Number(deleteButton.dataset.delete));
+  }
 });
 
-// User Modal
-const userModal = document.getElementById('userModal');
+const navItems = document.querySelectorAll('.nav-item');
+const pages = document.querySelectorAll('.page');
 
-function openAddUserModal() {
-    document.getElementById('modal-title').textContent = 'Add User';
-    document.getElementById('user-form').reset();
-    userModal.style.display = 'block';
-}
+navItems.forEach((button) => {
+  button.addEventListener('click', () => {
+    navItems.forEach((item) => item.classList.remove('active'));
+    pages.forEach((page) => page.classList.remove('active'));
 
-function editUser(id) {
-    document.getElementById('modal-title').textContent = 'Edit User';
-    lastDeletedUserId = id;
-    userModal.style.display = 'block';
-}
+    button.classList.add('active');
+    const targetId = button.dataset.section;
+    const targetPage = document.getElementById(targetId);
+    if (targetPage) targetPage.classList.add('active');
 
-function closeUserModal() {
-    userModal.style.display = 'none';
-}
-
-function deleteUser(id) {
-    lastDeletedUserId = id;
-    if (confirm('Are you sure you want to delete this user?')) {
-        alert('User ID ' + id + ' deleted!');
-    }
-}
-
-document.getElementById('user-form').addEventListener('submit', (e) => {
-    e.preventDefault();
-    const name = document.getElementById('user-name').value;
-    const email = document.getElementById('user-email').value;
-    alert('User saved: ' + name + ' (' + email + ')');
-    closeUserModal();
+    const title = targetId.charAt(0).toUpperCase() + targetId.slice(1);
+    document.getElementById('page-title').textContent = title;
+  });
 });
 
-window.onclick = (event) => {
-    if (event.target === userModal) {
-        closeUserModal();
-    }
-};
-
-// Track user hover for Delete key functionality
-document.addEventListener('mouseover', (e) => {
-    const row = e.target.closest('tr');
-    if (row && row.querySelector('.btn-danger')) {
-        const deleteBtn = row.querySelector('.btn-danger');
-        const userId = deleteBtn.getAttribute('onclick').match(/\d+/)[0];
-        lastDeletedUserId = parseInt(userId);
-    }
-});
+renderAll();
